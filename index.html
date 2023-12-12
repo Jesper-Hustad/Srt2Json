@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SRT to JSON Converter</title>
+</head>
+
+<!-- simple css to make it look better and more readable -->
+<!-- use arial fonts and make it bigger, auto center the content in the page -->
+<!-- add margin auto to the body so that it becomes a modern page -->
+<!-- width max width -->
+
+
+<!-- make the choose file button look better -->
+
+<!-- make copy to clipboard button better -->
+
+<style>
+    body {
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 20px;
+        text-align: center;
+        margin: 0 auto;
+        max-width: 1000px;
+    }
+
+    h2 {
+        font-size: 30px;
+    }
+
+    input, button {
+        font-size: 20px;
+        padding: 10px;
+        border: 1px solid #ccc;
+        border-radius: 5px;
+        background-color: #fff;
+
+    }
+
+    input[type=file]:hover {
+        background-color: #eee;
+    }
+
+
+
+    textarea {
+        font-size: 20px;
+    }
+
+    #result {
+        width: 100%;
+    }
+
+    #uploadForm {
+        margin: 0 auto;
+        width: 50%;
+    }
+
+</style>
+
+
+<body>
+    <h2>Convert SRT file to JSON lyrics</h2>
+
+    <form action="#" method="post" enctype="multipart/form-data" id="uploadForm">
+        📂 Select SRT file to upload:<br>
+        <input type="file" name="fileToUpload" id="fileToUpload" onchange="handleFile()">
+    </form>
+    <br><br>
+    <!-- text area for result -->
+
+
+    <!-- add a copy button to the areatext so you can easily copy it's contents -->
+
+    Json result:<br>
+    <button onclick="copyToClipboard()">🖨️ Copy to clipboard</button><br><br>
+    <textarea name="result" id="result" cols="50" rows="30"></textarea>
+
+
+
+    <script>
+
+        function copyToClipboard() {
+            /* Get the text field */
+            var copyText = document.getElementById("result");
+
+            /* Select the text field */
+            copyText.select();
+            copyText.setSelectionRange(0, 99999); /* For mobile devices */
+
+            /* Copy the text inside the text field */
+            document.execCommand("copy");
+
+            alert("Copied the text: " + copyText.value);
+        }
+
+async function handleFile() {
+    const fileInput = document.getElementById('fileToUpload');
+    const file = fileInput.files[0];
+
+    if (file) {
+        try {
+            const srtContent = await readFileAsync(file);
+            const jsonLyrics = convertSrtToJson(srtContent);
+            const combinedLines = combineDuplicateTimeLines(jsonLyrics);
+            const lines = zeroEndTimeIfNextTimeMatches(combinedLines);
+
+
+            const result = {
+                "lyrics": {
+                    "lines": lines
+                }
+            }
+
+            // put result in text area
+            document.getElementById('result').value = JSON.stringify(result, null, 2);
+
+            console.log(result);
+        } catch (error) {
+            errorMessage('Error reading file:', error);
+        }
+    }
+}
+
+        function convertSrtToJson(srtContent) {
+            const lines = srtContent.split(/\r?\n/);
+            const jsonLyrics = [];
+
+            for (let i = 0; i < lines.length; i += 4) {
+                const timecodesLine = lines[i + 1];
+
+                // console.log(timecodesLine)
+
+                // end of file
+                if (!timecodesLine) { break; }
+
+                const timecodes = timecodesLine.split(' --> ');
+                if (timecodes.length !== 2) {
+                    errorMessage(`Missing timecodes at line ${i + 1}`);
+                    continue;
+                }
+
+                const startTime = parseTimecode(timecodes[0]);
+                const endTime = parseTimecode(timecodes[1]);
+                const words = lines[i + 2];
+
+                // console.log(startTime, endTime, words);
+
+                jsonLyrics.push({
+                    startTimeMs: startTime,
+                    endTimeMs: endTime,
+                    words: words.trim()
+                });
+            }
+
+            return jsonLyrics;
+        }
+
+        function combineDuplicateTimeLines(lines) {
+
+            // if the previous line has the same end time combine the two lines
+
+            let result = [lines[0]]
+
+            for (let i = 1; i < lines.length; i++) {
+                const line = lines[i];
+                const previousLine = lines[i - 1];
+                console.log(previousLine.endTimeMs, line.endTimeMs, previousLine.words, line.words)
+                if (previousLine && previousLine.endTimeMs >= line.endTimeMs) {
+                    previousLine.words += ' ' + line.words;
+                } else {
+                    result.push(line)
+                }
+            }
+            return result;
+        }
+
+        function zeroEndTimeIfNextTimeMatches(lines) {
+            let result = [...lines]
+            // if the end time of one lines is the same as the start time of the next line set the end time to zero
+            for (let i = 0; i < lines.length - 1; i++) {
+                const line = lines[i];
+                const nextLine = lines[i + 1];
+
+                if (line.endTimeMs === nextLine.startTimeMs) {
+                    line.endTimeMs = 0;
+                }
+            }
+
+            return result;
+        }
+
+        function parseTimecode(timecode) {
+            const parts = timecode.split(/[:,]/);
+            const hours = parseInt(parts[0], 10) || 0;
+            const minutes = parseInt(parts[1], 10) || 0;
+            const seconds = parseFloat(parts[2].replace(',', '.')) || 0;
+
+            return hours * 60 * 60 * 1000 + minutes * 60 * 1000 + seconds * 1000;
+        }
+
+        function readFileAsync(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+
+        reader.onload = function (e) {
+            resolve(e.target.result);
+        };
+
+        reader.onerror = function (e) {
+            reject(e);
+        };
+
+        reader.readAsText(file);
+    });
+}
+
+
+function errorMessage(m){
+    console.log(m)
+    // alert(m);
+}
+
+    </script>
+</body>
+</html>
